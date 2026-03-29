@@ -20,7 +20,41 @@ except Exception:
     TESSERACT_AVAILABLE = False
 
 
+# ── PyMuPDF — optional (for PDF OCR fallback) ────────────────────────────────
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
+
 # ── PDF ───────────────────────────────────────────────────────────────────────
+
+def _ocr_pdf(path: str) -> str:
+    """Fallback: render each PDF page to image, then OCR with Tesseract."""
+    if not PYMUPDF_AVAILABLE:
+        return ""
+    if not TESSERACT_AVAILABLE:
+        return ""
+
+    text_parts = []
+    try:
+        doc = fitz.open(path)
+        for page_num in range(min(len(doc), 20)):  # cap at 20 pages
+            page = doc[page_num]
+            # Render page at 2x resolution for better OCR
+            mat = fitz.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            page_text = pytesseract.image_to_string(img)
+            if page_text.strip():
+                text_parts.append(page_text.strip())
+        doc.close()
+    except Exception:
+        pass
+
+    return "\n\n".join(text_parts)
+
 
 def read_pdf(path: str) -> str:
     import pdfplumber
@@ -46,8 +80,15 @@ def read_pdf(path: str) -> str:
         return f"[PDF read error: {e}]"
 
     full_text = "\n".join(text_parts).strip()
+
+    # If pdfplumber got very little text, try OCR fallback
+    if len(full_text) < 100:
+        ocr_text = _ocr_pdf(path)
+        if len(ocr_text) > len(full_text):
+            return ocr_text
+
     if not full_text:
-        return "[This PDF appears to be image-based. OCR is not available on this server.]"
+        return "[This PDF appears to be image-based. Install Tesseract + PyMuPDF for OCR.]"
     return full_text
 
 

@@ -4,6 +4,7 @@ python-multipart
 python-dotenv
 openai
 pdfplumber
+PyMuPDF
 python-docx
 pandas
 openpyxl
