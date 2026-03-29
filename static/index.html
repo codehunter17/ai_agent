@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Document Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0c0f1a;
+      --surface: #141827;
+      --surface2: #1c2035;
+      --surface3: #242842;
+      --border: #2a2e48;
+      --border-hover: #3d4270;
+      --accent: #5b6cf7;
+      --accent-dim: #5b6cf720;
+      --accent-hover: #7b8aff;
+      --green: #3dd68c;
+      --green-dim: #3dd68c18;
+      --red: #f25d5d;
+      --red-dim: #f25d5d15;
+      --amber: #f5b731;
+      --text: #e8eaf6;
+      --text-secondary: #8b90b5;
+      --text-muted: #5d6186;
+      --radius: 10px;
+      --radius-lg: 14px;
+      --shadow: 0 2px 12px rgba(0,0,0,.35);
+      --font: 'DM Sans', system-ui, -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: 10px;
+      display: grid; place-items: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px #5b6cf740;
+    }
+    header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p { color: var(--text-secondary); font-size: 0.8rem; font-weight: 400; }
+
+    /* ── Layout ─────────────────────────────────────────────────── */
+    .container {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 22px;
+    }
+    @media (max-width: 780px) { .container { grid-template-columns: 1fr; } }
+
+    /* ── Card ────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+    }
+    .card + .card { margin-top: 18px; }
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card-title span { font-size: 1rem; }
+
+    /* ── Upload zone ────────────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .25s ease;
+    }
+    .upload-zone:hover, .upload-zone.drag {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .upload-zone .icon { font-size: 2rem; margin-bottom: 8px; opacity: .8; }
+    .upload-zone p { color: var(--text-secondary); font-size: 0.82rem; }
+    .upload-zone p strong { color: var(--text); }
+    .upload-zone .formats {
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+    #fileInput { display: none; }
+
+    /* ── File badge ─────────────────────────────────────────────── */
+    .file-badge {
+      margin-top: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+    .file-badge.show { display: flex; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+      box-shadow: 0 0 6px var(--green);
+    }
+    .file-badge .meta { color: var(--text-secondary); font-size: 0.75rem; }
+    .file-badge .name { font-weight: 600; font-size: 0.83rem; }
+
+    /* ── File list ──────────────────────────────────────────────── */
+    .file-list { margin-top: 12px; }
+    .file-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      transition: background .15s;
+      cursor: default;
+    }
+    .file-item:hover { background: var(--surface2); }
+    .file-item .fi-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-secondary);
+    }
+    .file-item .fi-name.active { color: var(--text); font-weight: 600; }
+    .file-item .fi-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .file-item .fi-dot.active { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .file-item .fi-del {
+      background: none; border: none;
+      color: var(--text-muted); cursor: pointer;
+      font-size: 0.9rem; padding: 0 4px;
+      transition: color .15s;
+    }
+    .file-item .fi-del:hover { color: var(--red); }
+
+    /* ── Forms ──────────────────────────────────────────────────── */
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 5px;
+    }
+    select, input[type=text], input[type=number] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color .2s;
+      margin-bottom: 12px;
+    }
+    select:focus, input:focus { border-color: var(--accent); }
+
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: all .2s;
+      width: 100%;
+    }
+    button:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    button.green  { background: #1a9d5c; }
+    button.green:hover { background: #22b56c; }
+    button.blue   { background: #1678b5; }
+    button.blue:hover  { background: #1d8fcf; }
+
+    /* ── Tabs ───────────────────────────────────────────────────── */
+    .tabs { display: flex; gap: 5px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 6px 13px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: all .2s;
+      color: var(--text-muted);
+    }
+    .tab:hover { color: var(--text-secondary); border-color: var(--border-hover); }
+    .tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 12px var(--accent-dim);
+    }
+    .task-panel { display: none; }
+    .task-panel.active { display: block; }
+
+    /* ── Results panel ──────────────────────────────────────────── */
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .results-header h3 { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; }
+    .badge {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+
+    .result-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      font-size: 0.83rem;
+      line-height: 1.7;
+      max-height: 520px;
+      overflow-y: auto;
+      word-break: break-word;
+    }
+    .result-box.placeholder {
+      color: var(--text-muted);
+      text-align: center;
+      padding: 50px 20px;
+      font-size: 0.85rem;
+    }
+
+    /* ── MCQ items ──────────────────────────────────────────────── */
+    .mcq-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .mcq-item .q { font-weight: 600; margin-bottom: 8px; font-size: 0.85rem; }
+    .mcq-item .opt { padding: 3px 0; color: var(--text-secondary); font-size: 0.82rem; }
+    .mcq-item .opt.correct { color: var(--green); font-weight: 600; }
+    .mcq-item .exp { margin-top: 8px; font-size: 0.78rem; color: var(--accent-hover); font-style: italic; }
+
+    /* ── Key points ─────────────────────────────────────────────── */
+    .kp-item {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .kp-item:last-child { border-bottom: none; }
+    .kp-bullet {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      margin-top: 8px;
+    }
+
+    /* ── Extract table ──────────────────────────────────────────── */
+    .extract-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    .extract-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .extract-table td:first-child {
+      color: var(--text-secondary);
+      font-weight: 600;
+      width: 38%;
+      text-transform: capitalize;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    /* ── Search matches ─────────────────────────────────────────── */
+    .search-match {
+      background: var(--bg);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      font-size: 0.83rem;
+      white-space: pre-wrap;
+    }
+
+    /* ── Download bar ───────────────────────────────────────────── */
+    .download-bar {
+      display: none;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .download-bar.show { display: flex; }
+    .download-bar button { flex: 1; font-size: 0.8rem; padding: 9px 12px; }
+
+    /* ── Loader ──────────────────────────────────────────────────── */
+    .loader { display: none; text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+    .loader.show { display: block; }
+    .spinner {
+      width: 26px; height: 26px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error ───────────────────────────────────────────────────── */
+    .error-msg {
+      background: var(--red-dim);
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--red);
+      font-size: 0.82rem;
+      margin-top: 10px;
+      display: none;
+    }
+    .error-msg.show { display: block; }
+
+    .count-hint { font-size: 0.73rem; color: var(--text-muted); margin-top: -8px; margin-bottom: 12px; }
+
+    /* ── Scrollbar ───────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📄</div>
+  <div>
+    <h1>AI Document Agent</h1>
+    <p>Upload &middot; Extract &middot; Summarize &middot; Quiz &middot; Search</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ═══════ LEFT COLUMN ═══════ -->
+  <div>
+    <!-- Upload Card -->
+    <div class="card">
+      <div class="card-title"><span>↑</span> Upload</div>
+      <div class="upload-zone" id="uploadZone"
+           onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📂</div>
+        <p><strong>Click to browse</strong> or drag &amp; drop</p>
+        <div class="formats">PDF · DOCX · XLSX · CSV · JSON · TXT · IMG</div>
+      </div>
+      <input type="file" id="fileInput"
+        accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.json,.txt,.png,.jpg,.jpeg,.tiff,.bmp,.rtf"/>
+      <div class="file-badge" id="fileBadge">
+        <div class="status-dot"></div>
+        <div>
+          <div class="name" id="fileName"></div>
+          <div class="meta" id="fileInfo"></div>
+        </div>
+      </div>
+      <div class="error-msg" id="uploadError"></div>
+
+      <!-- File list -->
+      <div class="file-list" id="fileList"></div>
+    </div>
+
+    <!-- Task Card -->
+    <div class="card">
+      <div class="card-title"><span>⚡</span> Task</div>
+      <div class="tabs">
+        <div class="tab active" data-task="extract">Extract</div>
+        <div class="tab" data-task="mcq">MCQ</div>
+        <div class="tab" data-task="summarize">Summary</div>
+        <div class="tab" data-task="search">Search</div>
+      </div>
+
+      <!-- Extract Panel -->
+      <div class="task-panel active" id="panel-extract">
+        <label>Fields to extract (comma-separated)</label>
+        <input type="text" id="extractFields" value="name, dob, mobile, email, address"/>
+        <button onclick="runExtract()">Extract Fields</button>
+      </div>
+
+      <!-- MCQ Panel -->
+      <div class="task-panel" id="panel-mcq">
+        <label>Difficulty</label>
+        <select id="mcqDifficulty">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+        <label>Number of questions</label>
+        <input type="number" id="mcqCount" value="5" min="1" max="50"
+               oninput="updateCountHint(this)"/>
+        <p class="count-hint" id="countHint">5 questions from your document</p>
+        <button onclick="runMCQ()">Generate MCQs</button>
+      </div>
+
+      <!-- Summarize Panel -->
+      <div class="task-panel" id="panel-summarize">
+        <p style="color:var(--text-secondary);font-size:0.82rem;margin-bottom:14px">
+          Extracts the most important key points from your document.
+        </p>
+        <button onclick="runSummarize()">Extract Key Points</button>
+      </div>
+
+      <!-- Search Panel -->
+      <div class="task-panel" id="panel-search">
+        <label>Search query</label>
+        <input type="text" id="searchQuery"
+               placeholder="e.g. John Smith, revenue, chapter 3..."
+               onkeydown="if(event.key==='Enter') runSearch()"/>
+        <button onclick="runSearch()">Search Document</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ RIGHT COLUMN ═══════ -->
+  <div>
+    <div class="card" style="min-height:400px">
+      <div class="results-header">
+        <h3>Results</h3>
+        <span class="badge" id="resultBadge" style="display:none"></span>
+      </div>
+
+      <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <div id="loaderMsg">Processing...</div>
+      </div>
+
+      <div id="resultArea">
+        <div class="result-box placeholder">
+          Upload a file and run a task to see results here.
+        </div>
+      </div>
+
+      <div class="download-bar" id="downloadBar">
+        <button class="green" onclick="downloadMCQ('json')">↓ JSON</button>
+        <button class="blue" onclick="downloadMCQ('txt')">↓ Text</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = '';
+  let currentFileId = null;
+  let lastMCQData = null;
+  let uploadedFiles = [];   // track all uploads this session
+
+  // ── Count hint ─────────────────────────────────────────────────
+  function updateCountHint(el) {
+    const n = parseInt(el.value) || 5;
+    document.getElementById('countHint').textContent =
+      `${n} question${n !== 1 ? 's' : ''} from your document`;
+  }
+
+  // ── Tab switching ──────────────────────────────────────────────
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.task-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.task).classList.add('active');
+      document.getElementById('downloadBar').classList.remove('show');
+    });
+  });
+
+  // ── Drag & drop ────────────────────────────────────────────────
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+
+  // ── Upload ─────────────────────────────────────────────────────
+  async function handleFile(file) {
+    const errEl = document.getElementById('uploadError');
+    errEl.classList.remove('show');
+
+    const badge = document.getElementById('fileBadge');
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileInfo').textContent = 'Uploading...';
+    badge.classList.add('show');
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+      const res = await fetch(API + '/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+      currentFileId = data.file_id;
+      document.getElementById('fileInfo').textContent =
+        `${data.characters_extracted.toLocaleString()} chars · ${data.file_id.slice(0, 8)}`;
+
+      // Track file
+      uploadedFiles.push({ id: data.file_id, name: file.name });
+      renderFileList();
+    } catch (err) {
+      badge.classList.remove('show');
+      errEl.textContent = err.message;
+      errEl.classList.add('show');
+    }
+  }
+
+  // ── File list ──────────────────────────────────────────────────
+  function renderFileList() {
+    const el = document.getElementById('fileList');
+    if (uploadedFiles.length <= 1) { el.innerHTML = ''; return; }
+    el.innerHTML = uploadedFiles.map(f => `
+      <div class="file-item">
+        <div class="fi-dot ${f.id === currentFileId ? 'active' : ''}"></div>
+        <div class="fi-name ${f.id === currentFileId ? 'active' : ''}"
+             onclick="switchFile('${f.id}', '${f.name.replace(/'/g, "\\'")}')"
+             style="cursor:pointer"
+             title="${f.name}">${f.name}</div>
+        <button class="fi-del" onclick="deleteFile('${f.id}')" title="Delete">×</button>
+      </div>
+    `).join('');
+  }
+
+  function switchFile(id, name) {
+    currentFileId = id;
+    document.getElementById('fileName').textContent = name;
+    document.getElementById('fileInfo').textContent = `Active · ${id.slice(0, 8)}`;
+    document.getElementById('fileBadge').classList.add('show');
+    renderFileList();
+  }
+
+  async function deleteFile(id) {
+    try {
+      await fetch(API + '/files/' + id, { method: 'DELETE' });
+    } catch (_) {}
+    uploadedFiles = uploadedFiles.filter(f => f.id !== id);
+    if (currentFileId === id) {
+      currentFileId = uploadedFiles.length ? uploadedFiles[uploadedFiles.length - 1].id : null;
+      if (currentFileId) {
+        const last = uploadedFiles[uploadedFiles.length - 1];
+        switchFile(last.id, last.name);
+      } else {
+        document.getElementById('fileBadge').classList.remove('show');
+      }
+    }
+    renderFileList();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────
+  function requireFile() {
+    if (!currentFileId) { alert('Please upload a file first.'); return false; }
+    return true;
+  }
+  function showLoader(msg) {
+    document.getElementById('loaderMsg').textContent = msg || 'Processing...';
+    document.getElementById('loader').classList.add('show');
+    document.getElementById('resultArea').innerHTML = '';
+    document.getElementById('resultBadge').style.display = 'none';
+    document.getElementById('downloadBar').classList.remove('show');
+  }
+  function hideLoader() { document.getElementById('loader').classList.remove('show'); }
+  function showError(msg) {
+    hideLoader();
+    document.getElementById('resultArea').innerHTML =
+      `<div class="result-box" style="color:var(--red);border:1px solid var(--red)">${msg}</div>`;
+  }
+  async function apiFetch(endpoint, body) {
+    const res = await fetch(API + endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    return data;
+  }
+  function setBadge(label) {
+    const b = document.getElementById('resultBadge');
+    b.textContent = label; b.style.display = 'inline-block';
+  }
+
+  // ── Render: Extract ────────────────────────────────────────────
+  function renderExtract(data) {
+    let parsed = data.result;
+    try { parsed = JSON.parse(data.result); } catch (_) {}
+    let html = '';
+    if (typeof parsed === 'object' && parsed !== null) {
+      html = '<table class="extract-table">';
+      for (const [k, v] of Object.entries(parsed)) {
+        const val = v || '<span style="color:var(--text-muted)">Not found</span>';
+        html += `<tr><td>${k}</td><td>${val}</td></tr>`;
+      }
+      html += '</table>';
+    } else {
+      const lines = String(parsed).split('\n').filter(l => l.trim());
+      html = '<table class="extract-table">';
+      lines.forEach(line => {
+        const sep = line.indexOf(':');
+        if (sep > -1) {
+          const key = line.slice(0, sep).trim().replace(/["*]/g, '');
+          const val = line.slice(sep + 1).trim().replace(/["*]/g, '');
+          html += `<tr><td>${key}</td><td>${val}</td></tr>`;
+        } else {
+          html += `<tr><td colspan="2">${line}</td></tr>`;
+        }
+      });
+      html += '</table>';
+    }
+    document.getElementById('resultArea').innerHTML = `<div class="result-box">${html}</div>`;
+    setBadge('Extract');
+  }
+
+  // ── Render: MCQ ────────────────────────────────────────────────
+  function renderMCQ(data) {
+    let mcqs = data.mcq;
+    try { mcqs = JSON.parse(data.mcq); } catch (_) {}
+    lastMCQData = Array.isArray(mcqs) ? mcqs : null;
+    let html = '';
+    if (Array.isArray(mcqs)) {
+      mcqs.forEach((q, i) => {
+        const opts = (q.options || []).map(o => {
+          const letter = o.trim()[0];
+          const isCorrect = letter === q.answer;
+          return `<div class="opt ${isCorrect ? 'correct' : ''}">${isCorrect ? '✓' : '○'} ${o}</div>`;
+        }).join('');
+        html += `<div class="mcq-item">
+          <div class="q">Q${i + 1}. ${q.question}</div>
+          ${opts}
+          ${q.explanation ? `<div class="exp">${q.explanation}</div>` : ''}
+        </div>`;
+      });
+      document.getElementById('downloadBar').classList.add('show');
+    } else {
+      html = `<pre style="white-space:pre-wrap;font-family:var(--mono);font-size:.82rem">${String(mcqs)}</pre>`;
+    }
+    document.getElementById('resultArea').innerHTML = `<div class="result-box">${html}</div>`;
+    setBadge(`${Array.isArray(mcqs) ? mcqs.length : '?'} MCQs`);
+  }
+
+  // ── Render: Key Points ─────────────────────────────────────────
+  function renderKeyPoints(data) {
+    const lines = String(data.key_points).split('\n').filter(l => l.trim());
+    const items = lines.map(l =>
+      `<div class="kp-item"><div class="kp-bullet"></div><div>${l.replace(/^[•\-*\d.]+\s*/, '')}</div></div>`
+    ).join('');
+    document.getElementById('resultArea').innerHTML = `<div class="result-box">${items}</div>`;
+    setBadge(`${lines.length} Points`);
+  }
+
+  // ── Render: Search ─────────────────────────────────────────────
+  function renderSearch(data) {
+    const lines = String(data.results).split('\n').filter(l => l.trim());
+    const html = lines.map(l => `<div class="search-match">${l}</div>`).join('');
+    document.getElementById('resultArea').innerHTML =
+      `<div class="result-box">${html || '<span style="color:var(--text-muted)">No matches found.</span>'}</div>`;
+    setBadge('Search');
+  }
+
+  // ── Download MCQ ───────────────────────────────────────────────
+  function downloadMCQ(format) {
+    if (!lastMCQData) return;
+    let content, filename, type;
+    if (format === 'json') {
+      content = JSON.stringify(lastMCQData, null, 2);
+      filename = 'mcq_questions.json'; type = 'application/json';
+    } else {
+      content = lastMCQData.map((q, i) => {
+        const opts = (q.options || []).join('\n  ');
+        return `Q${i + 1}. ${q.question}\n  ${opts}\nAnswer: ${q.answer}${q.explanation ? '\nExplanation: ' + q.explanation : ''}`;
+      }).join('\n\n' + '-'.repeat(50) + '\n\n');
+      filename = 'mcq_questions.txt'; type = 'text/plain';
+    }
+    const blob = new Blob([content], { type });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename; a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ── Task runners ───────────────────────────────────────────────
+  async function runExtract() {
+    if (!requireFile()) return;
+    showLoader('Extracting fields...');
+    try {
+      const data = await apiFetch('/extract', {
+        file_id: currentFileId,
+        fields: document.getElementById('extractFields').value
+      });
+      hideLoader(); renderExtract(data);
+    } catch (e) { showError(e.message); }
+  }
+
+  async function runMCQ() {
+    if (!requireFile()) return;
+    const count = parseInt(document.getElementById('mcqCount').value) || 5;
+    if (count < 1 || count > 50) { alert('Enter a number between 1 and 50.'); return; }
+    showLoader(`Generating ${count} MCQs...`);
+    try {
+      const data = await apiFetch('/generate_mcq', {
+        file_id: currentFileId,
+        difficulty: document.getElementById('mcqDifficulty').value,
+        count
+      });
+      hideLoader(); renderMCQ(data);
+    } catch (e) { showError(e.message); }
+  }
+
+  async function runSummarize() {
+    if (!requireFile()) return;
+    showLoader('Extracting key points...');
+    try {
+      const data = await apiFetch('/summarize_key_points', { file_id: currentFileId });
+      hideLoader(); renderKeyPoints(data);
+    } catch (e) { showError(e.message); }
+  }
+
+  async function runSearch() {
+    if (!requireFile()) return;
+    const q = document.getElementById('searchQuery').value.trim();
+    if (!q) { alert('Please enter a search query.'); return; }
+    showLoader('Searching...');
+    try {
+      const data = await apiFetch('/search', { file_id: currentFileId, query: q });
+      hideLoader(); renderSearch(data);
+    } catch (e) { showError(e.message); }
+  }
+</script>
+</body>
+</html>
