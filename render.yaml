@@ -1,7 +1,7 @@
-services:
+﻿services:
   - type: web
     name: ai-document-agent
-    runtime: docker
+    runtime: python
     envVars:
       - key: LLM_PROVIDER
         value: groq
