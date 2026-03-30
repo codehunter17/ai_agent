@@ -13,11 +13,12 @@ try:
     import pytesseract
     if os.name == "nt":
         pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    pytesseract.get_tesseract_version()
     TESSERACT_AVAILABLE = True
 except Exception:
     TESSERACT_AVAILABLE = False
 
-# ── PyMuPDF — optional (for PDF OCR fallback) ────────────────────────────────
+# ── PyMuPDF — optional (for PDF fallback) ─────────────────────────────────────
 try:
     import fitz  # PyMuPDF
     PYMUPDF_AVAILABLE = True
@@ -27,21 +28,36 @@ except ImportError:
 
 # ── PDF ───────────────────────────────────────────────────────────────────────
 
+def _pymupdf_extract_text(path: str) -> str:
+    """Extract text using PyMuPDF built-in extractor (no Tesseract needed)."""
+    if not PYMUPDF_AVAILABLE:
+        return ""
+    text_parts = []
+    try:
+        doc = fitz.open(path)
+        for page_num in range(min(len(doc), 30)):
+            page = doc[page_num]
+            page_text = page.get_text("text")
+            if page_text.strip():
+                text_parts.append(page_text.strip())
+        doc.close()
+    except Exception:
+        pass
+    return "\n\n".join(text_parts)
+
+
 def _ocr_pdf(path: str) -> str:
     """Fallback: render each PDF page to image, then OCR with Tesseract."""
     if not PYMUPDF_AVAILABLE or not TESSERACT_AVAILABLE:
         return ""
-
     text_parts = []
     try:
         doc = fitz.open(path)
-        for page_num in range(min(len(doc), 20)):  # cap at 20 pages
+        for page_num in range(min(len(doc), 20)):
             page = doc[page_num]
-            # Render page at 3x resolution for better OCR
             mat = fitz.Matrix(3.0, 3.0)
             pix = page.get_pixmap(matrix=mat)
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            # Convert to grayscale for better OCR accuracy
             img = img.convert("L")
             page_text = pytesseract.image_to_string(img, config="--psm 6")
             if page_text.strip():
@@ -49,13 +65,13 @@ def _ocr_pdf(path: str) -> str:
         doc.close()
     except Exception:
         pass
-
     return "\n\n".join(text_parts)
 
 
 def read_pdf(path: str) -> str:
     import pdfplumber
 
+    # Step 1: Try pdfplumber
     text_parts = []
     try:
         with pdfplumber.open(path) as pdf:
@@ -63,19 +79,25 @@ def read_pdf(path: str) -> str:
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
-    except Exception as e:
-        return f"[PDF read error: {e}]"
+    except Exception:
+        pass
 
     full_text = "\n".join(text_parts).strip()
 
-    # If pdfplumber got very little text, try OCR fallback
+    # Step 2: If pdfplumber got very little, try PyMuPDF text extraction
+    if len(full_text) < 100:
+        pymupdf_text = _pymupdf_extract_text(path)
+        if len(pymupdf_text) > len(full_text):
+            full_text = pymupdf_text
+
+    # Step 3: If still very little, try OCR (needs Tesseract)
     if len(full_text) < 100:
         ocr_text = _ocr_pdf(path)
         if len(ocr_text) > len(full_text):
-            return ocr_text
+            full_text = ocr_text
 
     if not full_text:
-        return "[This PDF appears to be image-based. Install Tesseract + PyMuPDF for OCR.]"
+        return "[Could not extract text from this PDF. It may be image-based — try uploading as an image instead.]"
     return full_text
 
 
