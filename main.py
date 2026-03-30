@@ -119,6 +119,22 @@ async def debug_env():
         "status": "Key loaded" if key else "Key missing — check .env file",
     }
 
+@app.get("/debug/ocr")
+async def debug_ocr():
+    try:
+        import fitz
+        pymupdf = f"✅ PyMuPDF {fitz.version}"
+    except ImportError:
+        pymupdf = "❌ PyMuPDF not installed"
+    
+    try:
+        import pytesseract
+        tess_version = pytesseract.get_tesseract_version()
+        tesseract = f"✅ Tesseract {tess_version}"
+    except Exception as e:
+        tesseract = f"❌ Tesseract error: {e}"
+    
+    return {"pymupdf": pymupdf, "tesseract": tesseract}
 
 # ── FIX #1: Serve frontend from project root ─────────────────────────────────
 
