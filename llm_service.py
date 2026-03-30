@@ -1,23 +1,10 @@
 """
-LLM Service — supports Groq, OpenAI, and Gemini via OpenAI-compatible API.
-
-FIX #5: Strips markdown code fences from LLM responses so JSON.parse works.
+LLM Service — supports Groq, OpenAI, and Gemini (same OpenAI-compatible API).
 """
 
 import os
-import re
 import json
 from openai import OpenAI
-
-
-def _strip_code_fences(text: str) -> str:
-    """Remove ```json ... ``` wrappers that LLMs love to add."""
-    text = text.strip()
-    # Strip opening fence (```json, ```JSON, ``` etc.)
-    text = re.sub(r"^```(?:json|JSON)?\s*\n?", "", text)
-    # Strip closing fence
-    text = re.sub(r"\n?```\s*$", "", text)
-    return text.strip()
 
 
 class LLMService:
@@ -27,7 +14,7 @@ class LLMService:
         self.api_key = api_key
 
         base_urls = {
-            "groq":   "https://api.groq.com/openai/v1",
+            "groq": "https://api.groq.com/openai/v1",
             "openai": "https://api.openai.com/v1",
             "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
         }
@@ -38,16 +25,16 @@ class LLMService:
         if not self.api_key:
             raise ValueError(
                 "LLM_API_KEY is not set. Please add it to your .env file:\n"
-                "  LLM_PROVIDER=groq\n"
-                "  LLM_API_KEY=gsk_your_key_here\n"
-                "  LLM_MODEL=llama-3.3-70b-versatile"
+                "LLM_PROVIDER=groq\n"
+                "LLM_API_KEY=gsk_your_key_here\n"
+                "LLM_MODEL=llama3-70b-8192"
             )
         response = self.client.chat.completions.create(
             model=self.model,
             max_tokens=max_tokens,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user",   "content": user},
+                {"role": "user", "content": user},
             ],
         )
         return response.choices[0].message.content.strip()
@@ -57,21 +44,26 @@ class LLMService:
     def extract_fields(self, text: str, fields: str = "DOB, mobile number, email, name") -> str:
         system = (
             "You are an expert at extracting structured information from documents. "
-            "Extract ONLY what is explicitly present. If a field is missing, say 'Not found'. "
-            "Return ONLY a valid JSON object — no markdown, no explanation."
+            "The text may come from OCR and contain noise, garbled characters, or merged words. "
+            "Use your best judgment to reconstruct and extract the correct values. "
+            "For example: '&@' near an email likely means '@', 'acin' likely means 'ac.in', "
+            "run-together text like '+91-7070511022 B in/krishna' contains a phone number. "
+            "Extract ONLY what is explicitly present or can be confidently inferred from the noisy text. "
+            "If a field is truly missing and cannot be inferred, say 'Not found'. "
+            "Return output in clean JSON format."
         )
         user = (
             f"Extract the following fields from this document:\n{fields}\n\n"
-            f"Document:\n{text[:8000]}\n\n"
-            "Return a JSON object with the field names as keys."
+            f"Document (may contain OCR noise):\n{text[:8000]}\n\n"
+            "Return a JSON object with the field names as keys. "
+            "Clean up any OCR artifacts in the extracted values (fix spacing, symbols, domains)."
         )
-        raw = self._chat(system, user)
-        return _strip_code_fences(raw)
+        return self._chat(system, user)
 
     def generate_mcq(self, text: str, difficulty: str = "medium", count: int = 5) -> str:
         system = (
             "You are an expert educator. Generate multiple-choice questions from the provided text. "
-            "Return ONLY a valid JSON array — no markdown fences, no extra text."
+            "Always return a valid JSON array, no extra text."
         )
         user = (
             f"Generate {count} {difficulty}-difficulty MCQs from this text.\n\n"
@@ -81,32 +73,35 @@ class LLMService:
             '  "options": ["A) ...", "B) ...", "C) ...", "D) ..."]\n'
             '  "answer": "A" (just the letter)\n'
             '  "explanation": one sentence\n'
-            "Return ONLY the JSON array."
+            "Return ONLY the JSON array, no other text."
         )
-        raw = self._chat(system, user, max_tokens=3000)
-        return _strip_code_fences(raw)
+        return self._chat(system, user, max_tokens=3000)
 
     def summarize(self, text: str) -> str:
         system = (
             "You are an expert at summarizing documents. "
+            "The text may come from OCR and contain noise — ignore garbled characters and focus on meaning. "
             "Extract the most important key points as a clear, concise bullet list."
         )
         user = (
-            f"Summarize the following text into 5-10 key bullet points:\n\n"
+            f"Summarize the following text into 5–10 key bullet points:\n\n"
             f"{text[:8000]}\n\n"
-            "Format each point starting with a bullet character."
+            "Format each point starting with '• '"
         )
         return self._chat(system, user)
 
     def search(self, text: str, query: str) -> str:
         system = (
             "You are a search assistant. Find and return all relevant sections "
-            "from the document that match the user's query. Be specific."
+            "from the document that match the user's query. "
+            "The text may come from OCR — clean up any garbled characters before presenting results. "
+            "Be specific and present cleaned, readable results."
         )
         user = (
             f"Search query: {query}\n\n"
             f"Document content:\n{text[:10000]}\n\n"
             "Return all matching lines, rows, or paragraphs. "
+            "Clean up any OCR noise in the results. "
             "If nothing matches, say 'No matching results found.'"
         )
         return self._chat(system, user)

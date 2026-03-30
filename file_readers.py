@@ -1,10 +1,10 @@
 """
-File readers for PDF, DOCX, Excel, CSV, JSON, TXT, RTF, and Images (OCR).
+File readers for PDF, DOCX, Excel, TXT, RTF, and Images (OCR).
 """
 
+import io
 import re
 import os
-import json as json_lib
 from pathlib import Path
 from PIL import Image
 
@@ -12,13 +12,10 @@ from PIL import Image
 try:
     import pytesseract
     if os.name == "nt":
-        pytesseract.pytesseract.tesseract_cmd = (
-            r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        )
+        pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     TESSERACT_AVAILABLE = True
 except Exception:
     TESSERACT_AVAILABLE = False
-
 
 # ── PyMuPDF — optional (for PDF OCR fallback) ────────────────────────────────
 try:
@@ -32,9 +29,7 @@ except ImportError:
 
 def _ocr_pdf(path: str) -> str:
     """Fallback: render each PDF page to image, then OCR with Tesseract."""
-    if not PYMUPDF_AVAILABLE:
-        return ""
-    if not TESSERACT_AVAILABLE:
+    if not PYMUPDF_AVAILABLE or not TESSERACT_AVAILABLE:
         return ""
 
     text_parts = []
@@ -42,11 +37,13 @@ def _ocr_pdf(path: str) -> str:
         doc = fitz.open(path)
         for page_num in range(min(len(doc), 20)):  # cap at 20 pages
             page = doc[page_num]
-            # Render page at 2x resolution for better OCR
-            mat = fitz.Matrix(2.0, 2.0)
+            # Render page at 3x resolution for better OCR
+            mat = fitz.Matrix(3.0, 3.0)
             pix = page.get_pixmap(matrix=mat)
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            page_text = pytesseract.image_to_string(img)
+            # Convert to grayscale for better OCR accuracy
+            img = img.convert("L")
+            page_text = pytesseract.image_to_string(img, config="--psm 6")
             if page_text.strip():
                 text_parts.append(page_text.strip())
         doc.close()
@@ -62,20 +59,10 @@ def read_pdf(path: str) -> str:
     text_parts = []
     try:
         with pdfplumber.open(path) as pdf:
-            for i, page in enumerate(pdf.pages):
+            for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
-
-                # Also grab tables on this page
-                tables = page.extract_tables()
-                for table in tables:
-                    rows = []
-                    for row in table:
-                        cells = [str(c).strip() if c else "" for c in row]
-                        rows.append(" | ".join(cells))
-                    if rows:
-                        text_parts.append("\n".join(rows))
     except Exception as e:
         return f"[PDF read error: {e}]"
 
@@ -92,109 +79,31 @@ def read_pdf(path: str) -> str:
     return full_text
 
 
-# ── DOCX — FIX #6: now reads tables too ──────────────────────────────────────
+# ── DOCX ──────────────────────────────────────────────────────────────────────
 
 def read_docx(path: str) -> str:
     from docx import Document
-
     doc = Document(path)
-    parts = []
-
-    # Paragraphs
-    for p in doc.paragraphs:
-        text = p.text.strip()
-        if text:
-            parts.append(text)
-
-    # Tables — very common in resumes, invoices, reports
-    for table in doc.tables:
-        rows = []
-        for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells]
-            rows.append(" | ".join(cells))
-        if rows:
-            parts.append("\n".join(rows))
-
-    return "\n\n".join(parts)
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)
 
 
-# ── Excel — FIX #8: smarter truncation ───────────────────────────────────────
-
-MAX_EXCEL_CHARS = 15000  # generous but won't blow up LLM context
+# ── Excel ─────────────────────────────────────────────────────────────────────
 
 def read_excel(path: str) -> str:
     import pandas as pd
-
     ext = Path(path).suffix.lower()
     engine = "openpyxl" if ext == ".xlsx" else "xlrd"
-
     try:
         xl = pd.ExcelFile(path, engine=engine)
         parts = []
-        total_chars = 0
-
         for sheet in xl.sheet_names:
             df = xl.parse(sheet)
-            header = f"=== Sheet: {sheet} ({len(df)} rows × {len(df.columns)} cols) ==="
-            sheet_text = df.to_string(index=False)
-
-            # Truncate per-sheet if needed
-            remaining = MAX_EXCEL_CHARS - total_chars
-            if remaining <= 0:
-                parts.append(f"=== Sheet: {sheet} (skipped — text limit reached) ===")
-                break
-
-            if len(sheet_text) > remaining:
-                sheet_text = sheet_text[:remaining] + f"\n... [truncated, {len(df)} total rows]"
-
-            parts.append(header)
-            parts.append(sheet_text)
-            total_chars += len(header) + len(sheet_text)
-
+            parts.append(f"=== Sheet: {sheet} ===")
+            parts.append(df.to_string(index=False))
         return "\n\n".join(parts)
     except Exception as e:
         return f"[Excel read error: {e}]"
-
-
-# ── CSV — NEW ─────────────────────────────────────────────────────────────────
-
-def read_csv(path: str) -> str:
-    import pandas as pd
-
-    try:
-        # Try common encodings
-        for enc in ("utf-8", "latin-1", "cp1252"):
-            try:
-                df = pd.read_csv(path, encoding=enc)
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            return "[CSV read error: could not detect encoding]"
-
-        header = f"=== CSV: {len(df)} rows × {len(df.columns)} cols ==="
-        text = df.to_string(index=False)
-        if len(text) > MAX_EXCEL_CHARS:
-            text = text[:MAX_EXCEL_CHARS] + f"\n... [truncated, {len(df)} total rows]"
-        return f"{header}\n{text}"
-    except Exception as e:
-        return f"[CSV read error: {e}]"
-
-
-# ── JSON — NEW ────────────────────────────────────────────────────────────────
-
-def read_json(path: str) -> str:
-    try:
-        raw = Path(path).read_text(encoding="utf-8")
-        data = json_lib.loads(raw)
-        pretty = json_lib.dumps(data, indent=2, ensure_ascii=False)
-        if len(pretty) > MAX_EXCEL_CHARS:
-            pretty = pretty[:MAX_EXCEL_CHARS] + "\n... [truncated]"
-        return pretty
-    except json_lib.JSONDecodeError as e:
-        return f"[JSON parse error: {e}]"
-    except Exception as e:
-        return f"[JSON read error: {e}]"
 
 
 # ── TXT ───────────────────────────────────────────────────────────────────────
@@ -214,7 +123,6 @@ def read_rtf(path: str) -> str:
         content = Path(path).read_text(encoding="utf-8", errors="replace")
         return rtf_to_text(content)
     except ImportError:
-        # Fallback: crude regex stripping
         content = Path(path).read_text(encoding="utf-8", errors="replace")
         text = re.sub(r"\{[^{}]*\}", "", content)
         text = re.sub(r"\\[a-z]+\d*\s?", "", text)
@@ -233,30 +141,23 @@ def read_image(path: str) -> str:
 
 # ── Router ────────────────────────────────────────────────────────────────────
 
-READERS = {
-    ".pdf":  read_pdf,
-    ".docx": read_docx,
-    ".doc":  read_docx,
-    ".xlsx": read_excel,
-    ".xls":  read_excel,
-    ".csv":  read_csv,
-    ".json": read_json,
-    ".txt":  read_txt,
-    ".rtf":  read_rtf,
-    ".png":  read_image,
-    ".jpg":  read_image,
-    ".jpeg": read_image,
-    ".tiff": read_image,
-    ".bmp":  read_image,
-}
-
-
 def read_file(path: str) -> str:
     ext = Path(path).suffix.lower()
-    reader = READERS.get(ext)
+    readers = {
+        ".pdf":  read_pdf,
+        ".docx": read_docx,
+        ".doc":  read_docx,
+        ".xlsx": read_excel,
+        ".xls":  read_excel,
+        ".txt":  read_txt,
+        ".rtf":  read_rtf,
+        ".png":  read_image,
+        ".jpg":  read_image,
+        ".jpeg": read_image,
+        ".tiff": read_image,
+        ".bmp":  read_image,
+    }
+    reader = readers.get(ext)
     if not reader:
-        raise ValueError(
-            f"Unsupported file type: {ext}. "
-            f"Supported: {', '.join(sorted(READERS.keys()))}"
-        )
+        raise ValueError(f"Unsupported file type: {ext}")
     return reader(path)
