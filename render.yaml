@@ -1,9 +1,7 @@
 services:
   - type: web
     name: ai-document-agent
-    runtime: python
-    buildCommand: "apt-get update && apt-get install -y tesseract-ocr && pip install -r requirements.txt"
-    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    runtime: docker
     envVars:
       - key: LLM_PROVIDER
         value: groq
